@@ -1,10 +1,8 @@
 #!/usr/bin/python
 
-from time import sleep
-
 class Eldopy:
 
-  # gpio true and false
+  # digital true and false
   LOW = 0
   HIGH = 1
 
@@ -12,64 +10,33 @@ class Eldopy:
   WTRUE = 136
   WFALSE = 142
 
-  # pulselenght is 300 micoseconds = 0.0003 seconds (300.0 / 1000000.0)
-  PULSE_LENGTH = 0.0003
+  # pulselength is 300 micoseconds = 0.0003 seconds (300.0 / 1000000.0)
+  PULSE_LENGTH_MICROSECONDS = 300
 
   # repeat transmission
   REPEAT = 10
 
 
 
-  def __init__(self,gpio):
-    self.gpio = gpio
-
-    try:
-      file1 = open("/sys/class/gpio/export","w")
-      file1.write(str(self.gpio))
-      file1.close()
-    except:
-      #print("export failed")
-      pass
-
-    try:
-      file2 = open("/sys/class/gpio/gpio" + str(self.gpio) + "/direction","w")
-      file2.write("out")
-      file2.close()
-    except:
-      #print("direction failed")
-      pass
-
-    self.digitalWrite(self.LOW)
-
-
-
-  def digitalWrite(self, value):
-    filehandle = open("/sys/class/gpio/gpio" + str(self.gpio) + "/value","w")
-    filehandle.write(str(value))
-    try:
-      filehandle.close()
-    except:
-      print("filehandle coudn't be closed")
-
-
-  def sendEther(self, code):
-    filehandle = open("/sys/class/gpio/gpio" + str(self.gpio) + "/value","w")
-    for r in range(0, self.REPEAT):
+  def __convertAB440CodeToBinary(self, code):
+    digitalCode = ""
+    for r in range(0, Eldopy.REPEAT):
       for c in range(0, 16):
         x = 128
         for i in range(1,9):
 
           if ((code[c] & x) > 0):
-            self.digitalWrite(self.HIGH)
+            digitalCode += str(Eldopy.HIGH)
           else:
-            self.digitalWrite(self.LOW)
+            digitalCode += str(Eldopy.LOW)
 
-          sleep(self.PULSE_LENGTH)
           x = x >> 1
 
+    return digitalCode
 
 
-  def send433Mhz(self, codeStr, activate):
+
+  def generateAB440BinaryCode(self, codeStr, activate):
     # validate code
     if len(codeStr) != 6:
       print("The code must be 6 characters long")
@@ -90,9 +57,9 @@ class Eldopy:
     # parse device-code
     for i in range(0, 5):
       if codeStr[i] == '1':
-        code[i] = self.WTRUE
+        code[i] = Eldopy.WTRUE
       else:
-        code[i] = self.WFALSE
+        code[i] = Eldopy.WFALSE
 
     # parse device-id (A - E)
     id = pow(2, ord(codeStr[5]) - 65)
@@ -101,27 +68,30 @@ class Eldopy:
     x = 1
     for i in range(1,6):
       if ((id & x) > 0):
-        code[4 + i] = self.WTRUE
+        code[4 + i] = Eldopy.WTRUE
       else:
-        code[4 + i] = self.WFALSE
+        code[4 + i] = Eldopy.WFALSE
       x = x << 1
 
     # set status
     if activate:
-      code[10] = self.WTRUE;
-      code[11] = self.WFALSE;
+      code[10] = Eldopy.WTRUE;
+      code[11] = Eldopy.WFALSE;
     else:
-      code[10] = self.WFALSE
-      code[11] = self.WTRUE
+      code[10] = Eldopy.WFALSE
+      code[11] = Eldopy.WTRUE
 
-    self.sendEther(code)
+    return self.__convertAB440CodeToBinary(code)
+
 
 
 if __name__ == '__main__':
   import sys
   if len(sys.argv) == 4:
-    eldo = Eldopy(int(sys.argv[1]))
-    eldo.send433Mhz(sys.argv[2],(sys.argv[3] == 'True'))
+    from gpyio import GPyIO
+    gpyioobj = GPyIO(int(sys.argv[1]))
+    eldopy = Eldopy()
+    gpyioobj.digitalWriteSequence(eldopy.generateAB440BinaryCode(sys.argv[2],(sys.argv[3] == 'True')), Eldopy.PULSE_LENGTH_MICROSECONDS)
   else:
     print("run this script with the following arguments:")
     print("./eldopy.py gpioNumber AB440CodeString OnOffBoolean")
